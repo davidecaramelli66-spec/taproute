@@ -10,9 +10,21 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>TapRoute</title>
 <link rel="manifest" href="manifest.json">
+<script>
+  // Registered first so a failure anywhere below still surfaces on screen.
+  window.showFail = function (msg) {
+    var el = document.getElementById('fail');
+    if (!el) { document.addEventListener('DOMContentLoaded', function () { showFail(msg); }); return; }
+    document.getElementById('failmsg').textContent = msg;
+    el.classList.remove('hide');
+  };
+  window.addEventListener('error', function (e) {
+    showFail((e && e.message) ? e.message : 'Something went wrong while starting up.');
+  });
+</script>
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="vendor/leaflet.css">
 <style>
   :root {
     --bg: #111418;
@@ -176,6 +188,18 @@
 
 <div id="map"></div>
 
+<div class="scrim hide" id="fail">
+  <div class="modal">
+    <h2>TapRoute could not start</h2>
+    <p class="sub" id="failmsg"></p>
+    <p class="sub">Check your connection and try again. If you are on a network that blocks
+    things, or have a content blocker switched on for this site, that can stop the map loading.</p>
+    <div class="modalbtns">
+      <button class="btn primary" onclick="location.reload()">Try again</button>
+    </div>
+  </div>
+</div>
+
 <div class="hint" id="hint">Tap the map to drop your first point<small>Points snap to real roads and paths</small></div>
 
 <div class="topbar">
@@ -215,7 +239,8 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="vendor/leaflet.js"></script>
+<script>if (typeof L === 'undefined') showFail('The map library did not load.');</script>
 <script>
 /* ============================================================
    TapRoute — tap a map, get a route, export a GPX.
@@ -794,6 +819,14 @@ if (navigator.geolocation) {
 }
 
 render();
+
+/* Cache the app itself so launching never depends on the network being up.
+   Map tiles and routing still go straight out to the internet. */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* not fatal */ });
+  });
+}
 </script>
 </body>
 </html>

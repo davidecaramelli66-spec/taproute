@@ -37,6 +37,10 @@ Then open http://localhost:8123
 | --- | --- |
 | `index.html` | The whole app — markup, styles, logic. No build step. |
 | `manifest.json` | Lets iOS treat it as an app when added to the Home Screen. |
+| `sw.js` | Service worker. Caches the app so it launches without a connection. |
+| `vendor/` | Leaflet, served from this site rather than a CDN. |
+| `icon-*.png` | Home Screen icons, built by `make-icons.js`. |
+| `make-icons.js` | Draws the icons as PNGs with no image library. Run `node make-icons.js`. |
 | `server.js` | A ~20-line static file server for running it locally. |
 
 ## Services it uses
@@ -70,3 +74,5 @@ whichever app you use on the watch.
 - No offline map caching; it needs a connection to draw tiles and snap routes.
 - The Google Maps handoff re-routes between your points, so a twisty route may
   come back slightly different. Use the GPX export when the exact line matters.
+- The service worker serves the cached copy first, so a new version appears on
+  the second launch after a change rather than the first.
