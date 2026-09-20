@@ -1,0 +1,10 @@
+{
+  "name": "TapRoute",
+  "short_name": "TapRoute",
+  "description": "Tap a map to plan a running route, get the distance, export GPX.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111418",
+  "theme_color": "#111418"
+}

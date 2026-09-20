@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#111418">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TapRoute">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>TapRoute</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #111418;
+    --panel: rgba(17, 20, 24, 0.92);
+    --panel-solid: #1a1e24;
+    --line: rgba(255, 255, 255, 0.10);
+    --text: #f2f4f7;
+    --muted: #9aa4b2;
+    --accent: #ff5a1f;
+    --accent-dim: rgba(255, 90, 31, 0.16);
+    --ok: #34d399;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  #map { position: absolute; inset: 0; background: #2b3138; }
+  .leaflet-container { font-family: inherit; }
+  .leaflet-control-attribution { font-size: 9px; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    position: fixed; z-index: 500;
+    top: calc(var(--safe-t) + 8px);
+    left: calc(var(--safe-l) + 8px);
+    right: calc(var(--safe-r) + 8px);
+    display: flex; gap: 8px; align-items: center;
+  }
+  .search {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 0 10px; height: 42px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .search input {
+    flex: 1; min-width: 0; background: none; border: 0; outline: none;
+    color: var(--text); font-size: 15px; font-family: inherit;
+  }
+  .search input::placeholder { color: var(--muted); }
+  .iconbtn {
+    flex: 0 0 auto; width: 42px; height: 42px; display: grid; place-items: center;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    color: var(--text); font-size: 17px; cursor: pointer;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .iconbtn:active { background: var(--accent-dim); }
+
+  /* ---------- bottom sheet ---------- */
+  .sheet {
+    position: fixed; z-index: 500;
+    left: calc(var(--safe-l) + 8px); right: calc(var(--safe-r) + 8px);
+    bottom: calc(var(--safe-b) + 8px);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; padding: 12px;
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+  .statrow { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+  .dist { display: flex; align-items: baseline; gap: 6px; }
+  .dist b { font-size: 34px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .dist span { font-size: 14px; color: var(--muted); }
+  .meta { display: flex; gap: 12px; flex-wrap: wrap; padding-bottom: 5px; }
+  .meta div { font-size: 12px; color: var(--muted); }
+  .meta div b { display: block; color: var(--text); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .spinner {
+    width: 13px; height: 13px; border: 2px solid var(--line);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.7s linear infinite; margin-bottom: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hide { display: none !important; }
+
+  .tools { display: flex; gap: 6px; margin-top: 12px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .tools::-webkit-scrollbar { display: none; }
+  .btn {
+    flex: 0 0 auto; height: 38px; padding: 0 13px; border-radius: 10px;
+    background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line);
+    color: var(--text); font-size: 13px; font-weight: 550; font-family: inherit;
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn:active { background: rgba(255, 255, 255, 0.14); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.on { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.35; }
+
+  /* ---------- map markers ---------- */
+  .wp {
+    width: 15px; height: 15px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--accent);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+  }
+  .wp.start { background: var(--ok); border-color: #fff; width: 19px; height: 19px; }
+  .wp.end { background: var(--accent); border-color: #fff; width: 19px; height: 19px; }
+
+  /* ---------- modal ---------- */
+  .scrim {
+    position: fixed; inset: 0; z-index: 900; background: rgba(0, 0, 0, 0.55);
+    display: grid; place-items: center; padding: 16px;
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  .modal {
+    width: 100%; max-width: 420px; max-height: 76vh; overflow-y: auto;
+    background: var(--panel-solid); border: 1px solid var(--line);
+    border-radius: 16px; padding: 16px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  }
+  .modal h2 { margin: 0 0 4px; font-size: 17px; font-weight: 650; }
+  .modal p.sub { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+  .modal label { display: block; margin: 12px 0 5px; font-size: 12px; color: var(--muted); }
+  .modal input[type=text], .modal input[type=number] {
+    width: 100%; height: 42px; padding: 0 11px; border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line);
+    color: var(--text); font-size: 15px; font-family: inherit; outline: none;
+  }
+  .modal input:focus { border-color: var(--accent); }
+  .modalbtns { display: flex; gap: 8px; margin-top: 18px; }
+  .modalbtns .btn { flex: 1; height: 42px; justify-content: center; }
+
+  .rlist { list-style: none; margin: 0; padding: 0; }
+  .rlist li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 0; border-bottom: 1px solid var(--line);
+  }
+  .rlist li:last-child { border-bottom: 0; }
+  .rlist .nm { flex: 1; min-width: 0; }
+  .rlist .nm b { display: block; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rlist .nm span { font-size: 12px; color: var(--muted); }
+  .rlist button {
+    flex: 0 0 auto; height: 32px; padding: 0 10px; border-radius: 8px;
+    background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line);
+    color: var(--text); font-size: 12px; font-family: inherit; cursor: pointer;
+  }
+  .rlist button.del { color: #f87171; }
+  .empty { color: var(--muted); text-align: center; padding: 22px 0; font-size: 13px; }
+
+  .toast {
+    position: fixed; z-index: 950; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--safe-b) + 170px);
+    background: #fff; color: #111; font-size: 13px; font-weight: 550;
+    padding: 9px 15px; border-radius: 999px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+    opacity: 0; transition: opacity 0.2s; pointer-events: none; max-width: 80vw; text-align: center;
+  }
+  .toast.show { opacity: 1; }
+
+  .hint {
+    position: fixed; z-index: 400; left: 50%; top: 50%;
+    transform: translate(-50%, -50%); text-align: center;
+    color: #fff; font-size: 15px; font-weight: 550; pointer-events: none;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); padding: 0 24px;
+  }
+  .hint small { display: block; font-weight: 400; opacity: 0.8; margin-top: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="hint" id="hint">Tap the map to drop your first point<small>Points snap to real roads and paths</small></div>
+
+<div class="topbar">
+  <div class="search">
+    <span style="color:var(--muted)">&#9906;</span>
+    <input id="q" type="text" placeholder="Search a place" enterkeyhint="search" autocomplete="off">
+  </div>
+  <button class="iconbtn" id="locate" title="My location">&#10021;</button>
+  <button class="iconbtn" id="layers" title="Change map style">&#9707;</button>
+</div>
+
+<div class="sheet">
+  <div class="statrow">
+    <div class="dist"><b id="km">0.00</b><span>km</span></div>
+    <div class="meta">
+      <div>miles<b id="mi">0.00</b></div>
+      <div>est. time<b id="time">&mdash;</b></div>
+      <div>points<b id="npts">0</b></div>
+    </div>
+    <div class="spinner hide" id="spin"></div>
+  </div>
+  <div class="tools">
+    <button class="btn" id="mFoot">&#128694; Foot</button>
+    <button class="btn" id="mBike">&#128690; Bike</button>
+    <button class="btn" id="mLine">&#8599; Straight</button>
+    <button class="btn" id="undo">Undo</button>
+    <button class="btn" id="loop">Close loop</button>
+    <button class="btn" id="back">Out &amp; back</button>
+    <button class="btn" id="clear">Clear</button>
+    <button class="btn" id="save">Save</button>
+    <button class="btn" id="open">Routes</button>
+    <button class="btn" id="pace">Pace</button>
+    <button class="btn primary" id="gpx">Export GPX</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+/* ============================================================
+   TapRoute — tap a map, get a route, export a GPX.
+   Routing: FOSSGIS public OSRM.  Geocoding: Nominatim.
+   ============================================================ */
+
+var STORE_ROUTES = 'taproute.routes';
+var STORE_PREFS  = 'taproute.prefs';
+
+var OSRM = {
+  foot: 'https://routing.openstreetmap.de/routed-foot/route/v1/foot/',
+  bike: 'https://routing.openstreetmap.de/routed-bike/route/v1/bike/'
+};
+
+/* ---------- persisted prefs ---------- */
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(STORE_PREFS)) || {}; }
+  catch (e) { return {}; }
+}
+function savePrefs() {
+  try { localStorage.setItem(STORE_PREFS, JSON.stringify(prefs)); } catch (e) {}
+}
+var prefs = loadPrefs();
+if (!prefs.pace) prefs.pace = 5.5;          // minutes per km
+if (!prefs.mode) prefs.mode = 'foot';
+if (prefs.base == null) prefs.base = 0;
+
+/* ---------- state ---------- */
+var mode = prefs.mode;            // 'foot' | 'bike' | 'line'
+var waypoints = [];               // [{lat,lng}]
+var legs = [];                    // legs[i] joins waypoints[i] -> waypoints[i+1]
+var pending = 0;
+
+/* ---------- map ---------- */
+var BASEMAPS = [
+  { name: 'Standard',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attr: '&copy; OpenStreetMap contributors', max: 19 },
+  { name: 'Paths & cycle',
+    url: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
+    attr: 'CyclOSM | &copy; OpenStreetMap contributors', max: 20 },
+  { name: 'Topo',
+    url: 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
+    attr: '&copy; OpenTopoMap, OpenStreetMap contributors', max: 17 }
+];
+
+var map = L.map('map', { zoomControl: false, doubleClickZoom: false, tap: true })
+           .setView([51.5072, -0.1276], 15);
+L.control.zoom({ position: 'topright' }).addTo(map);
+
+var baseLayer = null;
+function setBase(i) {
+  prefs.base = ((i % BASEMAPS.length) + BASEMAPS.length) % BASEMAPS.length;
+  savePrefs();
+  var b = BASEMAPS[prefs.base];
+  if (baseLayer) map.removeLayer(baseLayer);
+  baseLayer = L.tileLayer(b.url, { maxZoom: b.max, attribution: b.attr }).addTo(map);
+  if (baseLayer.bringToBack) baseLayer.bringToBack();
+}
+setBase(prefs.base);
+
+var lineGroup = L.layerGroup().addTo(map);
+var markerGroup = L.layerGroup().addTo(map);
+
+/* ---------- geometry helpers ---------- */
+function haversine(a, b) {
+  var R = 6371000, toRad = Math.PI / 180;
+  var dLat = (b.lat - a.lat) * toRad, dLng = (b.lng - a.lng) * toRad;
+  var la1 = a.lat * toRad, la2 = b.lat * toRad;
+  var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/* A leg starts life as a straight line so the map reacts instantly,
+   then gets replaced by the snapped geometry when routing returns. */
+function makeLeg(a, b) {
+  return {
+    coords: [[a.lat, a.lng], [b.lat, b.lng]],
+    distance: haversine(a, b),
+    snapped: false,
+    pending: mode !== 'line'
+  };
+}
+
+function busy(delta) {
+  pending = Math.max(0, pending + delta);
+  document.getElementById('spin').classList.toggle('hide', pending === 0);
+}
+
+async function computeLeg(leg, a, b) {
+  if (mode === 'line') { leg.pending = false; leg.snapped = false; render(); return; }
+  busy(1);
+  try {
+    var url = OSRM[mode] + a.lng + ',' + a.lat + ';' + b.lng + ',' + b.lat +
+              '?overview=full&geometries=geojson';
+    var res = await fetch(url);
+    if (!res.ok) throw new Error('http ' + res.status);
+    var json = await res.json();
+    if (json.code !== 'Ok' || !json.routes || !json.routes.length) throw new Error('no route');
+    if (legs.indexOf(leg) === -1) return;   // leg was edited away while we waited
+    var r = json.routes[0];
+    leg.coords = r.geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
+    leg.distance = r.distance;
+    leg.snapped = true;
+  } catch (e) {
+    if (legs.indexOf(leg) === -1) return;
+    leg.snapped = false;                    // keep the straight-line fallback
+    toast('Could not snap that leg to a path');
+  } finally {
+    leg.pending = false;
+    busy(-1);
+    render();
+  }
+}
+
+/* ---------- editing ---------- */
+function addPoint(latlng) {
+  var p = { lat: latlng.lat, lng: latlng.lng };
+  waypoints.push(p);
+  if (waypoints.length > 1) {
+    var a = waypoints[waypoints.length - 2];
+    var leg = makeLeg(a, p);
+    legs.push(leg);
+    computeLeg(leg, a, p);
+  }
+  render();
+}
+
+function insertPoint(legIndex, latlng) {
+  var p = { lat: latlng.lat, lng: latlng.lng };
+  var a = waypoints[legIndex], b = waypoints[legIndex + 1];
+  waypoints.splice(legIndex + 1, 0, p);
+  var l1 = makeLeg(a, p), l2 = makeLeg(p, b);
+  legs.splice(legIndex, 1, l1, l2);
+  computeLeg(l1, a, p);
+  computeLeg(l2, p, b);
+  render();
+}
+
+function removePoint(i) {
+  waypoints.splice(i, 1);
+  if (waypoints.length === 0) { legs = []; }
+  else if (i === 0) { legs.shift(); }
+  else if (i === waypoints.length) { legs.pop(); }
+  else {
+    var a = waypoints[i - 1], b = waypoints[i];
+    var leg = makeLeg(a, b);
+    legs.splice(i - 1, 2, leg);
+    computeLeg(leg, a, b);
+  }
+  render();
+}
+
+function movePoint(i, latlng) {
+  waypoints[i] = { lat: latlng.lat, lng: latlng.lng };
+  if (i > 0) {
+    var a = waypoints[i - 1], b = waypoints[i];
+    var l = makeLeg(a, b); legs[i - 1] = l; computeLeg(l, a, b);
+  }
+  if (i < waypoints.length - 1) {
+    var c = waypoints[i], d = waypoints[i + 1];
+    var r = makeLeg(c, d); legs[i] = r; computeLeg(r, c, d);
+  }
+  render();
+}
+
+function closeLoop() {
+  if (waypoints.length < 3) { toast('Need at least 3 points to close a loop'); return; }
+  addPoint(L.latLng(waypoints[0].lat, waypoints[0].lng));
+}
+
+function outAndBack() {
+  if (waypoints.length < 2) { toast('Add a couple of points first'); return; }
+  var mirror = waypoints.slice(0, -1).reverse();
+  mirror.forEach(function (p) { addPoint(L.latLng(p.lat, p.lng)); });
+}
+
+function clearAll() {
+  waypoints = []; legs = []; render();
+}
+
+/* ---------- rendering ---------- */
+function totalMetres() {
+  return legs.reduce(function (s, l) { return s + (l.distance || 0); }, 0);
+}
+
+function render() {
+  lineGroup.clearLayers();
+  markerGroup.clearLayers();
+
+  legs.forEach(function (leg, i) {
+    if (!leg.coords || leg.coords.length < 2) return;
+    L.polyline(leg.coords, { color: '#0b0d10', weight: 8, opacity: 0.55,
+                             lineCap: 'round', interactive: false }).addTo(lineGroup);
+    var line = L.polyline(leg.coords, {
+      color: '#ff5a1f', weight: 4.5, opacity: 1, lineCap: 'round',
+      dashArray: leg.snapped ? null : '1,7'
+    }).addTo(lineGroup);
+    line.on('click', function (ev) {
+      L.DomEvent.stopPropagation(ev);
+      insertPoint(i, ev.latlng);
+    });
+  });
+
+  waypoints.forEach(function (p, i) {
+    var cls = 'wp' + (i === 0 ? ' start' : (i === waypoints.length - 1 && i > 0 ? ' end' : ''));
+    var size = (i === 0 || (i === waypoints.length - 1 && i > 0)) ? 19 : 15;
+    var m = L.marker([p.lat, p.lng], {
+      draggable: true,
+      icon: L.divIcon({ className: '', html: '<div class="' + cls + '"></div>',
+                        iconSize: [size, size], iconAnchor: [size / 2, size / 2] })
+    }).addTo(markerGroup);
+    m.on('dragend', function (ev) { movePoint(i, ev.target.getLatLng()); });
+    m.on('click', function (ev) { L.DomEvent.stopPropagation(ev); removePoint(i); });
+  });
+
+  var m = totalMetres();
+  document.getElementById('km').textContent = (m / 1000).toFixed(2);
+  document.getElementById('mi').textContent = (m / 1609.344).toFixed(2);
+  document.getElementById('npts').textContent = String(waypoints.length);
+
+  var mins = (m / 1000) * prefs.pace;
+  document.getElementById('time').textContent =
+    m > 0 ? (mins >= 60 ? Math.floor(mins / 60) + 'h ' + Math.round(mins % 60) + 'm'
+                        : Math.round(mins) + 'm') : '—';
+
+  document.getElementById('hint').classList.toggle('hide', waypoints.length > 0);
+  ['undo', 'loop', 'back', 'clear', 'save', 'gpx'].forEach(function (id) {
+    document.getElementById(id).disabled = waypoints.length === 0;
+  });
+  document.getElementById('mFoot').classList.toggle('on', mode === 'foot');
+  document.getElementById('mBike').classList.toggle('on', mode === 'bike');
+  document.getElementById('mLine').classList.toggle('on', mode === 'line');
+}
+
+/* Re-snap the whole route, e.g. after switching foot/bike/straight. */
+function recomputeAll() {
+  legs = [];
+  for (var i = 0; i < waypoints.length - 1; i++) legs.push(makeLeg(waypoints[i], waypoints[i + 1]));
+  legs.forEach(function (leg, i) { computeLeg(leg, waypoints[i], waypoints[i + 1]); });
+  render();
+}
+
+function setMode(m) {
+  if (mode === m) return;
+  mode = m; prefs.mode = m; savePrefs();
+  recomputeAll();
+}
+
+/* ---------- GPX ---------- */
+function routePoints() {
+  var pts = [];
+  if (!legs.length) {
+    waypoints.forEach(function (p) { pts.push([p.lat, p.lng]); });
+    return pts;
+  }
+  legs.forEach(function (leg, i) {
+    (leg.coords || []).forEach(function (c, j) {
+      if (i > 0 && j === 0) return;         // don't repeat the joint between legs
+      pts.push(c);
+    });
+  });
+  return pts;
+}
+
+function xmlEscape(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function buildGPX(name) {
+  var pts = routePoints();
+  var body = pts.map(function (c) {
+    return '   <trkpt lat="' + c[0].toFixed(6) + '" lon="' + c[1].toFixed(6) + '"></trkpt>';
+  }).join('\n');
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<gpx version="1.1" creator="TapRoute" xmlns="http://www.topografix.com/GPX/1/1" ' +
+    'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ' +
+    'xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">\n' +
+    ' <metadata>\n  <name>' + xmlEscape(name) + '</name>\n' +
+    '  <time>' + new Date().toISOString() + '</time>\n </metadata>\n' +
+    ' <trk>\n  <name>' + xmlEscape(name) + '</name>\n  <type>' +
+    (mode === 'bike' ? 'cycling' : 'running') + '</type>\n  <trkseg>\n' +
+    body + '\n  </trkseg>\n </trk>\n</gpx>\n';
+}
+
+function downloadGPX(name) {
+  if (!waypoints.length) return;
+  var safe = (name || 'route').replace(/[^a-z0-9\-_ ]/gi, '').trim() || 'route';
+  var blob = new Blob([buildGPX(name || safe)], { type: 'application/gpx+xml' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = safe.replace(/\s+/g, '-') + '.gpx';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+}
+
+/* ---------- saved routes ---------- */
+function getSaved() {
+  try { return JSON.parse(localStorage.getItem(STORE_ROUTES)) || []; }
+  catch (e) { return []; }
+}
+function putSaved(list) {
+  try { localStorage.setItem(STORE_ROUTES, JSON.stringify(list)); return true; }
+  catch (e) { toast('Storage full — delete an old route'); return false; }
+}
+
+function saveRoute(name) {
+  var list = getSaved();
+  list.unshift({
+    id: Date.now(),
+    name: name,
+    mode: mode,
+    distance: totalMetres(),
+    savedAt: new Date().toISOString(),
+    waypoints: waypoints.map(function (p) { return { lat: p.lat, lng: p.lng }; }),
+    legs: legs.map(function (l) {
+      return { distance: l.distance, snapped: l.snapped,
+               coords: l.coords.map(function (c) { return [+c[0].toFixed(6), +c[1].toFixed(6)]; }) };
+    })
+  });
+  if (putSaved(list)) toast('Saved "' + name + '"');
+}
+
+function loadRoute(r) {
+  mode = r.mode || 'foot'; prefs.mode = mode; savePrefs();
+  waypoints = r.waypoints.map(function (p) { return { lat: p.lat, lng: p.lng }; });
+  legs = (r.legs || []).map(function (l) {
+    return { coords: l.coords, distance: l.distance, snapped: l.snapped, pending: false };
+  });
+  if (!legs.length && waypoints.length > 1) recomputeAll(); else render();
+  var all = routePoints();
+  if (all.length) map.fitBounds(L.latLngBounds(all).pad(0.15));
+  closeModal();
+}
+
+/* ---------- UI plumbing ---------- */
+var toastTimer = null;
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200);
+}
+
+var scrim = null;
+function closeModal() { if (scrim) { scrim.remove(); scrim = null; } }
+function openModal(html) {
+  closeModal();
+  scrim = document.createElement('div');
+  scrim.className = 'scrim';
+  scrim.innerHTML = '<div class="modal">' + html + '</div>';
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeModal(); });
+  document.body.appendChild(scrim);
+  return scrim.querySelector('.modal');
+}
+
+function promptName(title, sub, initial, onOk) {
+  var m = openModal(
+    '<h2>' + title + '</h2><p class="sub">' + sub + '</p>' +
+    '<label for="nm">Name</label><input id="nm" type="text" value="' + xmlEscape(initial) + '">' +
+    '<div class="modalbtns"><button class="btn" data-x>Cancel</button>' +
+    '<button class="btn primary" data-ok>OK</button></div>');
+  var input = m.querySelector('#nm');
+  input.focus(); input.select();
+  m.querySelector('[data-x]').onclick = closeModal;
+  m.querySelector('[data-ok]').onclick = function () {
+    var v = input.value.trim(); if (!v) { input.focus(); return; }
+    closeModal(); onOk(v);
+  };
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') m.querySelector('[data-ok]').click();
+  });
+}
+
+function defaultName() {
+  var d = new Date();
+  return (totalMetres() / 1000).toFixed(1) + 'km ' +
+         d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+function openRoutesModal() {
+  var list = getSaved();
+  var rows = list.length ? '<ul class="rlist">' + list.map(function (r) {
+    return '<li><div class="nm"><b>' + xmlEscape(r.name) + '</b><span>' +
+           (r.distance / 1000).toFixed(2) + ' km &middot; ' +
+           new Date(r.savedAt).toLocaleDateString() + '</span></div>' +
+           '<button data-load="' + r.id + '">Open</button>' +
+           '<button data-gpx="' + r.id + '">GPX</button>' +
+           '<button class="del" data-del="' + r.id + '">Delete</button></li>';
+  }).join('') + '</ul>' : '<div class="empty">No saved routes yet.</div>';
+
+  var m = openModal('<h2>Saved routes</h2><p class="sub">Stored in this browser on this device.</p>' +
+                    rows + '<div class="modalbtns"><button class="btn" data-x>Close</button></div>');
+  m.querySelector('[data-x]').onclick = closeModal;
+  m.querySelectorAll('[data-load]').forEach(function (b) {
+    b.onclick = function () {
+      var r = getSaved().filter(function (x) { return x.id == b.dataset.load; })[0];
+      if (r) loadRoute(r);
+    };
+  });
+  m.querySelectorAll('[data-gpx]').forEach(function (b) {
+    b.onclick = function () {
+      var r = getSaved().filter(function (x) { return x.id == b.dataset.gpx; })[0];
+      if (!r) return;
+      var keepW = waypoints, keepL = legs, keepM = mode;
+      waypoints = r.waypoints; legs = r.legs || []; mode = r.mode || 'foot';
+      downloadGPX(r.name);
+      waypoints = keepW; legs = keepL; mode = keepM;
+    };
+  });
+  m.querySelectorAll('[data-del]').forEach(function (b) {
+    b.onclick = function () {
+      putSaved(getSaved().filter(function (x) { return x.id != b.dataset.del; }));
+      openRoutesModal();
+    };
+  });
+}
+
+function openPaceModal() {
+  var mins = Math.floor(prefs.pace);
+  var secs = Math.round((prefs.pace - mins) * 60);
+  var m = openModal(
+    '<h2>Pace</h2><p class="sub">Used only for the estimated time.</p>' +
+    '<label>Minutes per kilometre</label>' +
+    '<div style="display:flex;gap:8px;align-items:center">' +
+    '<input id="pm" type="number" min="2" max="20" step="1" value="' + mins + '">' +
+    '<b style="font-size:18px">:</b>' +
+    '<input id="ps" type="number" min="0" max="59" step="5" value="' + secs + '"></div>' +
+    '<div class="modalbtns"><button class="btn" data-x>Cancel</button>' +
+    '<button class="btn primary" data-ok>Save</button></div>');
+  m.querySelector('[data-x]').onclick = closeModal;
+  m.querySelector('[data-ok]').onclick = function () {
+    var pm = parseFloat(m.querySelector('#pm').value) || 5;
+    var ps = parseFloat(m.querySelector('#ps').value) || 0;
+    prefs.pace = Math.min(20, Math.max(2, pm + ps / 60));
+    savePrefs(); closeModal(); render();
+  };
+}
+
+/* ---------- search ---------- */
+async function search(q) {
+  if (!q.trim()) return;
+  busy(1);
+  try {
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
+              encodeURIComponent(q);
+    var res = await fetch(url);
+    var j = await res.json();
+    if (!j.length) { toast('Nothing found'); return; }
+    map.setView([parseFloat(j[0].lat), parseFloat(j[0].lon)], 15);
+  } catch (e) {
+    toast('Search unavailable');
+  } finally { busy(-1); }
+}
+
+/* ---------- wiring ---------- */
+map.on('click', function (e) { addPoint(e.latlng); });
+
+document.getElementById('undo').onclick  = function () { if (waypoints.length) removePoint(waypoints.length - 1); };
+document.getElementById('clear').onclick = function () { clearAll(); };
+document.getElementById('loop').onclick  = closeLoop;
+document.getElementById('back').onclick  = outAndBack;
+document.getElementById('mFoot').onclick = function () { setMode('foot'); };
+document.getElementById('mBike').onclick = function () { setMode('bike'); };
+document.getElementById('mLine').onclick = function () { setMode('line'); };
+document.getElementById('pace').onclick  = openPaceModal;
+document.getElementById('open').onclick  = openRoutesModal;
+document.getElementById('save').onclick  = function () {
+  promptName('Save route', 'Keep it on this device to reopen later.', defaultName(), saveRoute);
+};
+document.getElementById('gpx').onclick = function () {
+  promptName('Export GPX', 'The file lands in your Downloads or Files app.', defaultName(), downloadGPX);
+};
+document.getElementById('layers').onclick = function () {
+  setBase(prefs.base + 1);
+  toast(BASEMAPS[prefs.base].name);
+};
+document.getElementById('locate').onclick = function () {
+  if (!navigator.geolocation) { toast('Location not available'); return; }
+  busy(1);
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    busy(-1);
+    map.setView([pos.coords.latitude, pos.coords.longitude], 16);
+  }, function () {
+    busy(-1);
+    toast('Could not get your location');
+  }, { enableHighAccuracy: true, timeout: 10000 });
+};
+document.getElementById('q').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.target.blur(); search(e.target.value); }
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') closeModal();
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+    e.preventDefault();
+    if (waypoints.length) removePoint(waypoints.length - 1);
+  }
+});
+
+/* centre on the user once at startup, quietly */
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    if (!waypoints.length) map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+  }, function () {}, { timeout: 8000 });
+}
+
+render();
+</script>
+</body>
+</html>
