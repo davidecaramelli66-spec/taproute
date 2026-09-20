@@ -23,6 +23,12 @@ Then open http://localhost:8123
 - **Save** routes to this browser on this device; reopen or re-export later.
 - **Export GPX** — a standard GPX 1.1 track file, ready for Strava, Komoot,
   WorkOutDoors, Garmin, or anything else that reads GPX.
+- **Google Maps** — opens Google Maps with the route loaded as walking or
+  cycling directions, so you get turn-by-turn without touching a file. Google
+  allows an origin, a destination and nine waypoints between them, so longer
+  routes are thinned to eleven points spread evenly along the route. Google
+  then picks its own path between those points, which is close to what you
+  drew but not identical.
 - **Search** to jump to a place.
 
 ## Files
@@ -62,3 +68,5 @@ whichever app you use on the watch.
   your Mac and your phone. Use the GPX export to move a route.
 - No elevation profile yet.
 - No offline map caching; it needs a connection to draw tiles and snap routes.
+- The Google Maps handoff re-routes between your points, so a twisty route may
+  come back slightly different. Use the GPX export when the exact line matters.

@@ -206,6 +206,7 @@
     <button class="btn" id="save">Save</button>
     <button class="btn" id="open">Routes</button>
     <button class="btn" id="pace">Pace</button>
+    <button class="btn" id="gmaps">Google Maps</button>
     <button class="btn primary" id="gpx">Export GPX</button>
   </div>
 </div>
@@ -441,7 +442,7 @@ function render() {
                         : Math.round(mins) + 'm') : '—';
 
   document.getElementById('hint').classList.toggle('hide', waypoints.length > 0);
-  ['undo', 'loop', 'back', 'clear', 'save', 'gpx'].forEach(function (id) {
+  ['undo', 'loop', 'back', 'clear', 'save', 'gpx', 'gmaps'].forEach(function (id) {
     document.getElementById(id).disabled = waypoints.length === 0;
   });
   document.getElementById('mFoot').classList.toggle('on', mode === 'foot');
@@ -512,6 +513,69 @@ function downloadGPX(name) {
   a.click();
   a.remove();
   setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+}
+
+/* ---------- hand the route to Google Maps ----------
+   Google's directions URL takes an origin, a destination and at most nine
+   waypoints between them. Longer routes get thinned down to that budget,
+   keeping the points spread evenly along the route rather than by index,
+   so the overall shape survives. Google then picks its own path between
+   whatever points it is given. */
+var GMAPS_MAX_POINTS = 11;
+
+function thinForGoogle(list, max) {
+  if (list.length <= max) return list.slice();
+
+  var cum = [0];
+  for (var i = 1; i < list.length; i++) {
+    var d = (legs[i - 1] && legs[i - 1].distance) || haversine(list[i - 1], list[i]);
+    cum.push(cum[i - 1] + d);
+  }
+  var total = cum[cum.length - 1] || 1;
+
+  var chosen = {};
+  chosen[0] = true;
+  chosen[list.length - 1] = true;
+
+  for (var k = 1; k <= max - 2; k++) {
+    var target = total * k / (max - 1);
+    var best = -1, bestDiff = Infinity;
+    for (var j = 1; j < list.length - 1; j++) {
+      if (chosen[j]) continue;
+      var diff = Math.abs(cum[j] - target);
+      if (diff < bestDiff) { bestDiff = diff; best = j; }
+    }
+    if (best >= 0) chosen[best] = true;
+  }
+
+  return Object.keys(chosen)
+    .map(Number)
+    .sort(function (a, b) { return a - b; })
+    .map(function (i) { return list[i]; });
+}
+
+function googleMapsUrl() {
+  if (waypoints.length < 2) return null;
+  var pts = thinForGoogle(waypoints, GMAPS_MAX_POINTS);
+  var fmt = function (p) { return p.lat.toFixed(6) + ',' + p.lng.toFixed(6); };
+  var mid = pts.slice(1, -1);
+  var url = 'https://www.google.com/maps/dir/?api=1' +
+            '&origin=' + encodeURIComponent(fmt(pts[0])) +
+            '&destination=' + encodeURIComponent(fmt(pts[pts.length - 1])) +
+            '&travelmode=' + (mode === 'bike' ? 'bicycling' : 'walking');
+  if (mid.length) {
+    url += '&waypoints=' + mid.map(function (p) { return encodeURIComponent(fmt(p)); }).join('%7C');
+  }
+  return url;
+}
+
+function openInGoogleMaps() {
+  var url = googleMapsUrl();
+  if (!url) { toast('Add at least two points first'); return; }
+  if (waypoints.length > GMAPS_MAX_POINTS) {
+    toast('Thinned to ' + GMAPS_MAX_POINTS + ' points \u2014 Google\u2019s limit');
+  }
+  window.open(url, '_blank', 'noopener');
 }
 
 /* ---------- saved routes ---------- */
@@ -692,6 +756,7 @@ document.getElementById('save').onclick  = function () {
 document.getElementById('gpx').onclick = function () {
   promptName('Export GPX', 'The file lands in your Downloads or Files app.', defaultName(), downloadGPX);
 };
+document.getElementById('gmaps').onclick = openInGoogleMaps;
 document.getElementById('layers').onclick = function () {
   setBase(prefs.base + 1);
   toast(BASEMAPS[prefs.base].name);
