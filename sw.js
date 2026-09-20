@@ -1,6 +1,6 @@
 /* Caches the app itself so it always launches, even on a bad connection.
    Bump CACHE whenever the shell file list changes. */
-const CACHE = 'taproute-v2';
+const CACHE = 'taproute-v3';
 
 const SHELL = [
   './',

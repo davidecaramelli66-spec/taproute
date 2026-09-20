@@ -11,16 +11,34 @@
 <title>TapRoute</title>
 <link rel="manifest" href="manifest.json">
 <script>
-  // Registered first so a failure anywhere below still surfaces on screen.
+  /* Only a genuine failure to start should raise the panel.
+
+     Once the app is up, later errors must never cover a working map. That
+     matters most for errors thrown by browser extensions and content
+     blockers: Safari reports those as a bare "Script error." with no file
+     or line, because the script came from another origin. Those are never
+     this app's own code, so they are ignored. */
+  window.__booted = false;
+
   window.showFail = function (msg) {
+    if (window.__booted) return;
     var el = document.getElementById('fail');
     if (!el) { document.addEventListener('DOMContentLoaded', function () { showFail(msg); }); return; }
     document.getElementById('failmsg').textContent = msg;
     el.classList.remove('hide');
   };
+
   window.addEventListener('error', function (e) {
-    showFail((e && e.message) ? e.message : 'Something went wrong while starting up.');
+    if (window.__booted) return;
+    if (!e || !e.message) return;
+    if (e.message === 'Script error.' || !e.filename) return;   // not ours
+    showFail(e.message);
   });
+
+  // If the app somehow never finishes starting, say so rather than sit blank.
+  setTimeout(function () {
+    if (!window.__booted) showFail('The map did not finish loading.');
+  }, 12000);
 </script>
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -819,6 +837,7 @@ if (navigator.geolocation) {
 }
 
 render();
+window.__booted = true;
 
 /* Cache the app itself so launching never depends on the network being up.
    Map tiles and routing still go straight out to the internet. */
